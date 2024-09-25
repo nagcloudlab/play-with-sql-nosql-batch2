@@ -1,0 +1,14 @@
+# ----------------------------------------------------------
+# Spring Boot Config
+# ----------------------------------------------------------
+spring:
+  application:
+    name: Getting Started with Astra
+  jackson:
+    serialization:
+      WRITE_DATES_AS_TIMESTAMPS: false
+  mvc:
+    dispatch-options-request: true
+    
+server:
+  port: 8080

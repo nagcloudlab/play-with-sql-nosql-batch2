@@ -1,0 +1,17 @@
+{
+  "name": "nodejs-crud",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "select": "node select.js",
+    "insert": "node insert.js",
+    "delete": "node delete.js",
+    "update": "node update.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cassandra-driver": "^4.5.2"
+  }
+}

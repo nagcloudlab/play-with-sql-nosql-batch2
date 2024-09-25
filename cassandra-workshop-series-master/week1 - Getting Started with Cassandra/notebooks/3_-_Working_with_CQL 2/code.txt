@@ -1,0 +1,1188 @@
+--------------------NOTEBOOK_Cassandra Developer Workshop #3 - Working with CQL--------------------
+--------------------CELL_MARKDOWN_1--------------------
+<center>![CQLSplash](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/getting-started-with-cassandra.png)</center>
+
+### <span style="color:teal">**Welcome to the Using CQL notebook!**</span>
+#### CQL is the language we use to access Cassandra databases - like SQL for relational databases. In this notebook, try out CQL and familiarize yourself with the language. If you already know SQL, CQL will be very intuitive.
+
+#### As we explore CQL, we will also set up a table for the KillrVideo website!
+--------------------CELL_MARKDOWN_2--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Set Up the Notebook</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Execute a CQL script to initialize the KillrVideo database for this notebook
+
+#### <span style="color:teal"><b>Step 1:</b></span> Execute the following cell to initialize this notebook. Hover over the right-hand corner of the cell and click the _Run_ button.
+<center>![ExecuteCell](https://s3.amazonaws.com/datastaxtraining/CaaS/ExecuteCell.png "ExecuteCell" )</center>
+#### **Note:** You don't see the CQL script because the code editor is hidden, but you can still run the cell.
+--------------------CELL_CQL_3--------------------
+// CQL notebook initialization script
+//CREATE KEYSPACE IF NOT EXISTS killrvideo WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
+
+use killrvideo;
+
+// Remove this section after DROP bug is fixed (https://datastax.jira.com/browse/CP-3499)
+// Note we create the tables and then drop them so we can recreate them.
+// This assures us the tables have the correct configuration.
+// If we only did the CREATE TABLE IF NOT EXISTS, we might end up with a table with the wrong columns or something...
+CREATE TABLE IF NOT EXISTS user_credentials (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS users (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS videos (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS user_videos (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS latest_videos (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS video_ratings (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS video_ratings_by_user (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS video_playback_stats (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS video_recommendations (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS video_recommendations_by_video (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS videos_by_tag (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS tags_by_letter (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS comments_by_video (key text, PRIMARY KEY(key));
+CREATE TABLE IF NOT EXISTS comments_by_user (key text, PRIMARY KEY(key));
+// END removable section
+
+DROP TABLE IF EXISTS user_credentials;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS videos;
+DROP TABLE IF EXISTS user_videos;
+DROP TABLE IF EXISTS latest_videos;
+DROP TABLE IF EXISTS video_ratings;
+DROP TABLE IF EXISTS video_ratings_by_user;
+DROP TABLE IF EXISTS video_playback_stats;
+DROP TABLE IF EXISTS video_recommendations;
+DROP TABLE IF EXISTS video_recommendations_by_video;
+DROP TABLE IF EXISTS videos_by_tag;
+DROP TABLE IF EXISTS tags_by_letter;
+DROP TABLE IF EXISTS comments_by_video;
+DROP TABLE IF EXISTS comments_by_user;
+
+
+// User credentials, keyed by email address so we can authenticate
+CREATE TABLE IF NOT EXISTS user_credentials (
+    email     text,
+    password  text,
+    userid    uuid,
+    PRIMARY KEY (email)
+);
+
+// Videos by id
+CREATE TABLE IF NOT EXISTS videos (
+    videoid                uuid,
+    userid                 uuid,
+    name                   text,
+    description            text,
+    location               text,
+    location_type          int,
+    preview_image_location text,
+    tags                   set<text>,
+    added_date             timestamp,
+    PRIMARY KEY (videoid)
+);
+
+// One-to-many from user point of view (lookup table)
+CREATE TABLE IF NOT EXISTS user_videos (
+    userid                 uuid,
+    added_date             timestamp,
+    videoid                uuid,
+    name                   text,
+    preview_image_location text,
+    PRIMARY KEY (userid, added_date, videoid)
+) WITH CLUSTERING ORDER BY (added_date DESC, videoid ASC);
+
+// Track latest videos, grouped by day (if we ever develop a bad hotspot from the daily grouping here, we could mitigate by
+// splitting the row using an arbitrary group number, making the partition key (yyyymmdd, group_number))
+CREATE TABLE IF NOT EXISTS latest_videos (
+    yyyymmdd text,
+    added_date timestamp,
+    videoid uuid,
+    userid uuid,
+    name text,
+    preview_image_location text,
+    PRIMARY KEY (yyyymmdd, added_date, videoid)
+) WITH CLUSTERING ORDER BY (added_date DESC, videoid ASC);
+
+// Video ratings (counter table)
+CREATE TABLE IF NOT EXISTS video_ratings (
+    videoid uuid,
+    rating_counter counter,
+    rating_total counter,
+    PRIMARY KEY (videoid)
+);
+
+// Video ratings by user (to try and mitigate voting multiple times)
+CREATE TABLE IF NOT EXISTS video_ratings_by_user (
+    videoid uuid,
+    userid uuid,
+    rating int,
+    PRIMARY KEY (videoid, userid)
+);
+
+// Records the number of views/playbacks of a video
+CREATE TABLE IF NOT EXISTS video_playback_stats (
+    videoid uuid,
+    views counter,
+    PRIMARY KEY (videoid)
+);
+
+// Recommendations by user (powered by Spark), with the newest videos added to the site always first
+CREATE TABLE IF NOT EXISTS video_recommendations ( 
+    userid uuid,
+    added_date timestamp,
+    videoid uuid,
+    rating float,
+    authorid uuid,
+    name text,
+    preview_image_location text,
+    PRIMARY KEY(userid, added_date, videoid)
+) WITH CLUSTERING ORDER BY (added_date DESC, videoid ASC);
+
+// Recommendations by video (powered by Spark)
+CREATE TABLE IF NOT EXISTS video_recommendations_by_video (
+    videoid uuid,
+    userid uuid,
+    rating float,
+    added_date timestamp STATIC,
+    authorid uuid STATIC,
+    name text STATIC,
+    preview_image_location text STATIC,
+    PRIMARY KEY(videoid, userid)
+);
+
+// Index for tag keywords
+CREATE TABLE IF NOT EXISTS videos_by_tag (
+    tag text,
+    videoid uuid,
+    added_date timestamp,
+    userid uuid,
+    name text,
+    preview_image_location text,
+    tagged_date timestamp,
+    PRIMARY KEY (tag, videoid)
+);
+
+// Index for tags by first letter in the tag
+CREATE TABLE IF NOT EXISTS tags_by_letter (
+    first_letter text,
+    tag text,
+    PRIMARY KEY (first_letter, tag)
+);
+
+// Comments for a given video
+CREATE TABLE IF NOT EXISTS comments_by_video (
+    videoid uuid,
+    commentid timeuuid,
+    userid uuid,
+    comment text,
+    PRIMARY KEY (videoid, commentid)
+) WITH CLUSTERING ORDER BY (commentid DESC);
+
+// Comments for a given user
+CREATE TABLE IF NOT EXISTS comments_by_user (
+    userid uuid,
+    commentid timeuuid,
+    videoid uuid,
+    comment text,
+    PRIMARY KEY (userid, commentid)
+) WITH CLUSTERING ORDER BY (commentid DESC);
+
+--------------------CELL_MARKDOWN_4--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">DESCRIBE KEYSPACES Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Get an initial feel for the syntax of CQL
+- #### List all the keyspaces in our database
+
+
+#### **Note:** In CaaS, the database contains keyspaces, which contain tables.
+<br>
+
+#### <span style="color:teal"><b>Step 1:</b></span> List the keyspaces in your database by executing the following command in the next cell:
+```
+DESCRIBE KEYSPACES;
+```
+
+--------------------CELL_CQL_5--------------------
+// Enter and execute the DESCRIBE KEYSPACES command in this cell
+// Click in the cell and press SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_6--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Review the noteworthy points of the previous cell.
+- #### CQL Comments start with `//` and continue to the end of the line. CQL ignores comments - they are for human readable notes.
+<center>![CQLComment](https://s3.amazonaws.com/datastaxtraining/CaaS/CQLComment.png "CQLComment" )</center>
+- #### CQL commands end with `;`
+<center>![CQLEnd](https://s3.amazonaws.com/datastaxtraining/CaaS/CQLEnd.png "CQLEnd" )</center>
+
+- #### The note in the results explains that <code>DESCRIBE</code> is not a valid CQL statement. Technically, <code>DESCRIBE</code> is not CQL, but cqlsh (the CQL command shell) and Studio notebooks support <code>DESCRIBE</code>.
+<center>![Note](https://s3.amazonaws.com/datastaxtraining/CaaS/DescribeNote.png)</center>
+
+- #### Studio offers this note to encourage you to consider using the graphical schema viewer.
+<center>![SchemaButton](https://s3.amazonaws.com/datastaxtraining/CaaS/SchemaButton.png "SchemaButton" )</center>
+
+- #### The `DESCRIBE` command results show all the keyspaces, which are mostly used by Cassandra, but we will use `killrvideo` for our KillrVideo app.
+<center>![SchemaButton](https://s3.amazonaws.com/datastaxtraining/CaaS/KeyspaceList.png "KeyspaceList" )</center>
+
+--------------------CELL_MARKDOWN_7--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">DESCRIBE KEYSPACE Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Inspect the `killrvideo` keyspace
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> In the following CQL cell, execute a `DESCRIBE KEYSPACE` command for the `killrvideo` keyspace.
+<br>
+<details>
+<summary><i><span style="color:blue">Need a command hint? Click here.</span></i></summary>
+> #### Use the keywords `DESCRIBE KEYSPACE` following by the keyspace name.
+> #### Don't forget to complete the command with a semi-colon (`;`).
+</details>
+
+<details>
+<summary><i><span style="color:blue">Just want to copy the command? Click here.</span></i></summary>
+```
+DESCRIBE KEYSPACE killrvideo;
+```
+</details>
+--------------------CELL_CQL_8--------------------
+// Enter and execute the command in this cell to inspect the killrvideo keyspace
+// Remember, click in the cell and press SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_9--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Inspect the `DESCRIBE KEYSPACE` results.
+
+#### The results for this command show three things:
+- #### The note suggesting (again) that we use the _Schema Viewer_ instead of the `DESCRIBE` command
+- #### The CQL command used to create the keyspace, including the replication strategy and the replication factor
+<h4> - The replication strategy tells Cassandra how to distribute the replicated data across the database machines</h4>
+<h4> - The replication factor tells Cassandra how many copies of the data to create</h4>
+
+<center>![DescribeKeyspaceKillrvideo](https://s3.amazonaws.com/datastaxtraining/CaaS/DescribeKeyspaceKillrvideo.png)</center>
+
+
+---
+
+</p> <h4><b>Note:</b><br>
+<blockquote cite="http://www.worldwildlife.org/who/index.html">If you are like most app developers, you probably don't care about the replication details, but if you do, you can find out more at <a href="http://academy.datastax.com" target="_blank">DataStax Academy</a> - it's free!</blockquote></h4></p>
+
+---
+
+- #### The commands to create (almost) all the tables KillrVideo needs. We say "almost" because in the next section, you will learn about `CREATE TABLE` and add the missing table!
+--------------------CELL_MARKDOWN_10--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">CREATE TABLE Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn how to use the `CREATE TABLE` command
+- #### Create the `killrvideo.users` table
+
+
+#### Here's a spec for the columns of the missing `killrvideo.users` table (the bold indicates `userid` is the primary key):
+<center>![UsersTableSpec](https://s3.amazonaws.com/datastaxtraining/CaaS/UsersTableSpec.png "UsersTableSpec" )</center>
+#### Before we try to create the table, let's look at the other `CREATE TABLE` commands in the previous results.
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Scroll up to the `DESCRIBE KEYSPACE` results and locate the command to create the `user_videos` table. The `user_videos` table is where KillrVideo keeps track of which videos a user has added. It looks like this:
+```
+CREATE TABLE killrvideo.user_videos (
+  userid uuid,
+  added_date timestamp,
+  videoid uuid,
+  name text,
+  preview_image_location text,
+  PRIMARY KEY ((userid), added_date, videoid)
+  ... // Nasty boilerplate code omitted here
+);
+```
+---
+</p> <h4><b>Note:</b><br>
+<blockquote cite="http://www.worldwildlife.org/who/index.html">We left off everything after the <code>PRIMARY KEY</code> clause because all the trailing stuff is boilerplate table tuning parameters that we don't need to worry about. When we create a table, if we don't specifically set these parameters, they will receive default values - which is what you want virtually all the time. If you really care about understanding these values, see the free courses on <a href="http://academy.datastax.com" target="_blank">DataStax Academy</a>.</blockquote></h4></p>
+---
+
+
+--------------------CELL_MARKDOWN_11--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> To get a feel for the syntax, identify key parts of the `CREATE TABLE` command. Find the following parts:
+- #### Keyspace name
+- #### Table name
+- #### Column definitions (column names and associated data types)
+- #### Primary key clause
+<center>![UserVideosTable](https://s3.amazonaws.com/datastaxtraining/CaaS/UserVideosTable.png "UserVideosTable" )</center>
+
+
+--------------------CELL_MARKDOWN_12--------------------
+#### <span style="color:teal"><b>Step 3:</b></span> Look at the data types in the column definitions. Consider each of these types:
+- #### The `uuid` type is a universally unique identifier which Cassandra can generate efficiently in a distributed manner. We use `uuid`s in Cassandra instead of incrementing counters for all ID fields.
+- #### A `timestamp` is a point in time relative to January 1, 1970.
+- #### The `text` type is just a simple string, like a `VARCHAR` in SQL.<br>
+- #### This command doesn't show them, but there are other standard types such as `boolean`, `int` and `float`.
+
+<br>
+</p> <h4><b>Note:</b><br>
+<blockquote cite="http://www.worldwildlife.org/who/index.html">You can find explanations of all of the CQL data types on <a href="http://academy.datastax.com" target="_blank">DataStax Academy</a> and in the <a href="https://docs.datastax.com/en/latest-cql/cql/cql_reference/cql_commands" target="_blank">DataStax Docs</a>.</blockquote></h4></p>
+
+
+--------------------CELL_MARKDOWN_13--------------------
+#### <span style="color:teal"><b>Step 4:</b></span> Investigate the `PRIMARY KEY` clause. Notice that the primary key contains three columns: `userid`, `added_date` and `videoid`. These three columns uniquely identify each row. We study primary keys further in the data modeling notebook.
+
+#### Hopefully, dissecting the `CREATE TABLE` command for `user_videos` has given you good intuition. Let's put that intuition to work!
+
+--------------------CELL_MARKDOWN_14--------------------
+#### <span style="color:teal"><b>Step 5:</b></span> Create the `killrvideo.users` table. Write the code in the next cell. Use the columns specified in the table just below (the bold `userid` column is the primary key - a single column).
+<center>![UsersTableSpec](https://s3.amazonaws.com/datastaxtraining/CaaS/UsersTableSpec.png "UsersTableSpec" )</center>
+
+<br>
+<details>
+<summary><i><span style="color:blue">Need a hint to help you start writing the command? Click here.</span></i></summary>
+```
+CREATE TABLE killrvideo.users (
+  // List columns and their data types here (put a comma after each column/type pair)
+  PRIMARY KEY(userid)
+);
+```
+</details>
+
+<details>
+<summary><i><span style="color:blue">Want to see the entire solution? Click here.</span></i></summary>
+```
+CREATE TABLE killrvideo.users (
+  userid     uuid,
+  firstname  text,
+  lastname   text,
+  email      text,
+  created_date timestamp,
+  PRIMARY KEY(userid)
+);
+```
+</details>
+
+--------------------CELL_CQL_15--------------------
+// Write and execute the CQL to create the killrvideo.users table here
+// To execute this cell press SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_16--------------------
+#### <span style="color:teal"><b>Step 6:</b></span> Verify the `users` table is correct by describing the keyspace in the next cell.
+- #### Verify the table name is correct
+- #### Verify the column names and associated data types match the table at the top of this section
+- #### Verify the primary key is `userid`
+
+---
+
+#### **Note:**
+> #### You can either use the `DESCRIBE KEYSPACE` command, or try your luck with the `DESCRIBE TABLE` command - we bet you can figure it out!
+
+---
+
+<details>
+<summary><i><span style="color:blue">Need the `DESCRIBE KEYSPACE` command? Click here.</span></i></summary>
+```
+DESCRIBE KEYSPACE killrvideo;
+```
+</details>
+
+<details>
+<summary><i><span style="color:blue">Want the `DESCRIBE TABLE` command instead? Click here.</span></i></summary>
+```
+DESCRIBE TABLE killrvideo.users;
+```
+</details>
+--------------------CELL_CQL_17--------------------
+// Let's look at the killrvideo keyspace again to verify the users table
+// To execute this cell, click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_18--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">INSERT Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn how to use the `INSERT` command
+- #### Insert a user into the `users` table
+
+<br>
+#### Time to start putting some data into the `users` table!
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Inspect the following example `INSERT` command.
+- #### Identify the keyspace and table names
+- #### Identify the columns names
+- #### Identify the corresponding column values
+- #### Take note of how to generate values for `uuid`s and `timestamp`s
+
+<center>![InsertUser](https://s3.amazonaws.com/datastaxtraining/CaaS/InsertUser.png "InsertUser" )</center>
+
+#### Yeah, it works pretty much like you would expect.
+
+---
+
+#### **Note:**
+> #### The column names specify the order of the corresponding values. This means that the order of the column names must match the order of the values.
+> ####
+> #### Cassandra uses a sparse storage mechanism to store rows. This means that rows don't have to contain values for all columns. Further, Cassandra only consumes space for those columns used by an individual row. 
+> #### So, you don't have to worry about unused columns consuming space, but when you insert a row, you must at least include all columns specified by the primary key. The reasoning for this constraint will become clear in the Data Modeling notebook.
+
+---
+
+
+--------------------CELL_MARKDOWN_19--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Copy, paste and execute this command in the following cell:
+
+```
+INSERT INTO killrvideo.users (userid, firstname, lastname, email, created_date)
+  VALUES(uuid(), 'Jeff', 'Carpenter', 'jc@datastax.com', toTimestamp(now()));
+```
+--------------------CELL_CQL_20--------------------
+// Copy and paste the INSERT command from the bottom of the previous cell here
+// Then, execute this cell (click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell)
+
+--------------------CELL_MARKDOWN_21--------------------
+#### <span style="color:teal"><b>Step 3:</b></span> Inspect the results of the insert by executing the following cell.
+- #### It appears that the cell is empty, but that is because we have hidden the code editor
+- #### Just click on the _CL.ONE_ button to execute it - no need to expand the code editor
+--------------------CELL_CQL_22--------------------
+//                    ,---,_          ,
+//                    _>   `'-.  .--'/
+//               .--'` ._      `/   <_
+//                >,-' ._'.. ..__ . ' '-.
+//             .-'   .'`         `'.     '.
+//              >   / >`-.     .-'< \ , '._\
+//             /    ; '-._>   <_.-' ;  '._>
+//             `>  ,/  /___\ /___\  \_  /
+//             `.-|(|  \o_/  \o_/   |)|`
+//                 \;        \      ;/
+//                   \  .-,   )-.  /
+//                    /`  .'-'.  `\
+//                   ;_.-`.___.'-.;
+//
+//                 Hey! You Peeked!
+//
+// We have hidden this cell because we don't encourage the general use of this command
+// This command requires a full table scan
+// So, it works fine for small tables, but large tables would require massive amounts of data transfer - which is not performant
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_23--------------------
+#### <span style="color:teal"><b>Step 4:</b></span> Use the results in the previous cell to verify your `INSERT` command worked correctly.
+- #### For each of the columns, verify the values are correct
+- #### Verify that all columns are present
+- #### Note the `uuid` value CQL generated for the `userid` column
+- #### Also note the generated `timestamp` value in the `created_date` column
+--------------------CELL_MARKDOWN_24--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Insert Another User</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Write and execute an `INSERT` command yourself
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> In the following cell, write and execute an `INSERT` command from scratch.
+- #### Insert a user named Cristina Veale
+- #### Her email address is cv@datastax.com
+
+<br>
+<details>
+<summary><i><span style="color:blue">Need a hint? Click here.</span></i></summary>
+> The `INSERT` statement you will write here looks just like the statement from the previous step, except the values are different.
+> Therefore, you will need to change the `firstname`, `lastname` and `email` column values to Cristina's.
+> Also, you will still need to generate new `uuid` and `timestamp` values.
+</details>
+
+<details>
+<summary><i><span style="color:blue">Want to see the command? Click here.</span></i></summary>
+```
+INSERT INTO killrvideo.users (userid, firstname, lastname, email, created_date)
+  VALUES(uuid(), 'Cristina', 'Veale', 'cv@datastax.com', toTimestamp(now()));
+```
+</details>
+
+--------------------CELL_CQL_25--------------------
+// Write the INSERT statement for Cristina in this cell
+// When you are ready, execute this cell (click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell)
+INSERT INTO killrvideo.users (userid, firstname, lastname, email, created_date)
+  VALUES(uuid(), 'Cristina', 'Veale', 'cv@datastax.com', toTimestamp(now()));
+--------------------CELL_MARKDOWN_26--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Again, look at the contents of the `users` table by executing the following (hidden) cell.
+- #### Inspect the results to make sure the `INSERT` worked as expected
+- #### Notice the difference in the values of the `userid` and `created_date` columns
+--------------------CELL_CQL_27--------------------
+//                            _____
+//                         ,-"     "-.
+//                        / o       o \
+//                       /   \     /   \
+//                      /     )-"-(     \
+//                     /     ( 6 6 )     \
+//                    /       \ " /       \
+//                   /         )=(         \
+//                  /   o   .--"-"--.   o   \
+//                 /    I  /  -   -  \  I    \
+//             .--(    (_}y/\       /\y{_)    )--.
+//            (    ".___l\/__\_____/__\/l___,"    )
+//             \                                 /
+//              "-._      o O o O o O o      _,-"
+//                  `--Y--.___________.--Y--'
+//                     |==.___________.==|
+//                     `==.___________.==' 
+//
+//                    Hey! You peeked again!
+//
+// We have hidden this cell because we don't encourage the general use of this command
+// This command requires a full table scan
+// So, it works fine for small tables, but large tables would require massive amounts of data transfer - which is not performant
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_28--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">SELECT Command</span></center>
+
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn the syntax of the CQL `SELECT` command
+- #### Execute a `SELECT` statement that we have prepared for you to retrieve Cristina's row from the `users` table
+
+<br>
+#### For those unfamiliar with SQL, the suspense of seeing the data querying command is probably killing you. But, for the everybody else, you have already guessed it. It's a `SELECT` command that looks a lot like SQL. Let's take a look.
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Inspect the following command to identify:
+- #### Keyspace name
+- #### Table name
+- #### List of columns the command retrieves
+- #### `WHERE` clause that specifies the retrieved row(s)
+<center>![SelectUser](https://s3.amazonaws.com/datastaxtraining/CaaS/SelectUser.png "SelectUser" )</center>
+
+---
+
+#### **Note:**
+> #### The list of retrieved columns can be a comma-separated list, or you can use splat (`*`) to retrieve all columns.
+> ####
+> #### To specify a `uuid`, copy and paste the entire value including the hyphens. There are NO quotes around `uuid` values.
+
+---
+
+
+--------------------CELL_MARKDOWN_29--------------------
+
+#### <span style="color:teal"><b>Step 2:</b></span> Copy and paste this command in the next cell (replacing `<userid-value-goes-here>` with Cristina's `userid` value from the previous cell):
+```
+SELECT * FROM killrvideo.users WHERE userid = <userid-value-goes-here>;
+```
+--------------------CELL_CQL_30--------------------
+// Query for the row associated with Cristina by using her userid
+// Copy and paste the SELECT statement from the previous row
+// Don't forget to update the userid value
+// Execute this cell (click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell)
+
+--------------------CELL_MARKDOWN_31--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Get Jeff's Email Address</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Write a query from scratch
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> In the next cell, query the `users` table for Jeff's email address.
+
+<br>
+<details>
+<summary><i><span style="color:blue">Need a hint on what to change? Click here.</span></i></summary>
+> The query to get Jeff's email address looks a lot like the query in the previous section except:
+> - Obviously, you want Jeff's email and not Cristina's, so you will need to set the `userid` value in the `WHERE` clause to Jeff's `userid` value
+> - Also, you don't need to retrieve all the columns for Jeff, just the `email` column
+</details>
+
+<details>
+<summary><i><span style="color:blue">Want the CQL statement? Click here.</span></i></summary>
+> Remember, you will need to copy and paste Jeff's `userid` value where it says `<jeff's-userid-value-goes-here>`.
+```
+SELECT email FROM killrvideo.users WHERE userid = <jeff's-userid-value-goes-here>;
+```
+</details>
+--------------------CELL_CQL_32--------------------
+// Query for the email associated with Jeff by using his userid
+// Write the SELECT statement
+// Don't forget to update the userid value
+// Execute the query (click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell)
+
+--------------------CELL_MARKDOWN_33--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Compare your query results.
+- #### If this is what you see, you're good to go
+
+<center>![QueryResult](https://s3.amazonaws.com/datastaxtraining/CaaS/QueryResult.png "QueryResult" )</center>
+
+#### OK, we admit it.
+#### CQL syntax is close enough to SQL syntax, that the query was, well, anticlimactic.
+#### But let's briefly review the results.
+
+
+--------------------CELL_MARKDOWN_34--------------------
+
+#### <span style="color:teal"><b>Step 3:</b></span> Review the results from your query.
+- #### Your results should only contain the `email` column.
+- #### The value of the `email` column should be as shown above.
+
+---
+
+#### **Note:**
+> #### The CQL syntax is like the SQL syntax, however, there are differences in the languages.
+> #### In CQL, you may only query tables based on their primary keys.
+> #### We'll investigate and explain this in more detail in the data modeling notebook.
+> #### For now, we'll just focus on the CQL commands, but it's worth noting that CQL is not a complete replacement for SQL.
+
+---
+--------------------CELL_MARKDOWN_35--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">UPDATE Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn the syntax of the CQL UPDATE command
+- #### Execute a UPDATE statement that we have prepared for you to update Jeff's email address
+
+<br>
+#### By now, you should expect that updating data with CQL is easy and obvious - and you'd be right!
+#### Let's say we want to update the Jeff's email in the `users` table to `jeffc@datastax.com`.
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Inspect the following `UPDATE` command.
+- #### Identify the keyspace name
+- #### Identify the table name
+- #### Identify the `SET` clauses, i.e., the column(s) being updated and the new value(s)
+- #### Identify the `WHERE` clause
+<center>![UpdateUserEmail](https://s3.amazonaws.com/datastaxtraining/CaaS/UpdateUserEmail.png)</center>
+
+#### You see in the `SET` clause we specify the column(s) we want to update and the associated value(s).
+
+
+--------------------CELL_MARKDOWN_36--------------------
+
+#### <span style="color:teal"><b>Step 2:</b></span> Copy and paste this command in the next cell (replacing <Jeff's-userid-value-goes-here> with Jeff's userid value).
+
+```
+UPDATE killrvideo.users SET email = 'jeffc@datastax.com' WHERE userid = <Jeff's-userid-value-goes-here>;
+```
+--------------------CELL_CQL_37--------------------
+// Paste the update command in this cell
+// Copy and paste Jeff's userid value as indicated
+// Execute the update by SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_38--------------------
+#### <span style="color:teal"><b>Step 3:</b></span> Execute the following cell and verify the table looks like it should.
+- #### Verify the command updated Jeff's email as desired
+- #### Make sure none of the other rows were affected
+--------------------CELL_CQL_39--------------------
+//                                        ,-._.-._.-._.-._.-.
+//                                        `-.             ,-'
+//           .----------------------.       |             |
+//          |                        |      |             |
+//          |  OK, when we collapse  |      |             |
+//          |  these code editor     |      |             |
+//          |  sections, we expect   |     ,';".________.-.
+//          |  you to respect our    |     ;';_'         )]
+//          |  privacy!              |    ;             `-|
+//          |                        `.    `T-            |
+//           `----------------------._ \    |             |
+//                                    `-;   |             |
+//                                          |..________..-|
+//                                         /\/ |________..|
+//                                    ,'`./  >,(           |
+//                                    \_.-|_/,-/   ii  |   |
+//                                     `."' `-/  .-"""||    |
+//                                      /`^"-;   |    ||____|
+//                                     /     /   `.__/  | ||
+//                                          /           | ||
+//                                                      | ||
+//
+// We have hidden this cell because we don't encourage the general use of this command
+// This command requires a full table scan
+// So, it works fine for small tables, but large tables would require massive amounts of data transfer - which is not performant
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_40--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Update Cristina's Email</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Write an `UPDATE` command from scratch
+- #### Change Cristina's email to `cristinav@datastax.com`
+
+<br>
+#### Here's your chance to shine!
+#### See if you can write the CQL `UPDATE` command without any coaching.
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Write and execute the `UPDATE` command in the next cell.
+
+<br>
+<details>
+<summary><i><span style="color:blue">Decided you want some coaching after all? Click here.</span></i></summary>
+> This command looks a lot like the command you used to update Jeff's email.
+> Except you need to use a different `email` value and a different `userid` value.
+> You can find Cristina's `userid` value in the results of the previous cell.
+</details>
+
+<details>
+<summary><i><span style="color:blue">Are you lost and/or lazy and just want the command? Click here.</span></i></summary>
+> Remember, you need to copy and paste Cristina's `userid` value where it says `<Cristina's-userid-value-goes-here>`
+```
+UPDATE killrvideo.users SET email = 'cristinav@datastax.com' WHERE userid = <Cristina's-userid-value-goes-here>;
+```
+</details>
+
+--------------------CELL_CQL_41--------------------
+// Write the UPDATE command in this cell
+// Copy and paste Cristina's userid value as indicated
+// Execute the update by SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_42--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Verify the `UPDATE` worked as expected.
+- #### Execute the following cell
+- #### The cell looks empty because we have hidden the code editor - just click the _CL.ONE_ button
+- #### Verify the command updated Cristina's email as desired
+--------------------CELL_CQL_43--------------------
+//                (                      )
+//                |\    _,--------._    / |
+//                | `.,'            `. /  |
+//                `  '              ,-'   '
+//                 \/_         _   (     /
+//                (,-.`.    ,',-.`. `__,'
+//                 |/#\ ),-','#\`= ,'.` |
+//                 `._/)  -'.\_,'   ) ))|
+//                 /  (_.)\     .   -'//
+//                (  /\____/\    ) )`'\
+//                 \ |V----V||  ' ,    \
+//                  |`- -- -'   ,'   \  \      _____
+//           ___    |         .'    \ \  `._,-'     `-
+//              `.__,`---^---'       \ ` -'
+//                 -.______  \ . /  ______,-
+//                         `.     ,'            
+//
+//            Now, this is rediculous!
+//            You have probably looked at every one of
+//            these cells that we thought we had hidden.
+//
+// We have hidden this cell because we don't encourage the general use of this command
+// This command requires a full table scan
+// So, it works fine for small tables, but large tables would require massive amounts of data transfer - which is not performant
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_44--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">DELETE Column Command</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn the syntax of the CQL DELETE command
+- #### Execute a DELETE command that we have prepared for you to delete Jeff's row
+
+---
+
+#### **Note:**
+> #### There are many ways to delete data in Cassandra with CQL:
+> - #### Delete a specific column from a row
+> - #### Delete an entire row
+> - #### Delete the _contents_ of a table, or delete the _entire_ table
+> - #### Even delete an entire keyspace, but we won't cover that here
+
+---
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Inspect this command that deletes a specific column.
+<center>![DeleteUserEmail](https://s3.amazonaws.com/datastaxtraining/CaaS/DeleteUserEmail.png)</center>
+
+<br>
+#### Remember that Cassandra supports sparse rows (i.e., rows that do not contain data in all columns).
+#### So, we can delete data from columns that are not in the primary key
+
+
+--------------------CELL_MARKDOWN_45--------------------
+
+#### <span style="color:teal"><b>Step 2:</b></span> Copy, paste and execute the following `UPDATE` example.
+- #### Be sure to paste in Jeff's `userid` value, which you can find in the previous cell
+
+```
+DELETE email FROM killrvideo.users WHERE userid = <Jeff's-userid-value-goes-here>;
+```
+--------------------CELL_CQL_46--------------------
+// Copy and paste the DELETE command from the previous cell
+// Copy and paste Jeff's userid value as indicated
+// Execute the delete by SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_47--------------------
+#### <span style="color:teal"><b>Step 3:</b></span> Verify the `DELETE` worked as expected.
+- #### Execute the following cell:
+- #### Verify the command deleted Jeff's email as desired
+--------------------CELL_CQL_48--------------------
+//                            XXXX
+//                           X    XX
+//                          X  ***  X                XXXXX
+//                         X  *****  X            XXX     XX
+//                      XXXX ******* XXX      XXXX          XX
+//                    XX   X ******  XXXXXXXXX                XX XXX
+//                  XX      X ****  X                           X** X
+//                 X        XX    XX     X                      X***X
+//                X         //XXXX       X                      XXXX
+//               X         //   X                             XX
+//              X         //    X          XXXXXXXXXXXXXXXXXX/
+//              X     XXX//    X          X
+//              X    X   X     X         X
+//              X    X    X    X        X
+//               X   X    X    X        X                    XX
+//               X    X   X    X        X                 XXX  XX
+//                X    XXX      X        X               X  X X  X
+//                X             X         X              XX X  XXXX
+//                 X             X         XXXXXXXX\     XX   XX  X
+//                  XX            XX              X     X    X  XX
+//                    XX            XXXX   XXXXXX/     X     XXXX
+//                      XXX             XX***         X     X
+//                         XXXXXXXXXXXXX *   *       X     X
+//                                      *---* X     X     X
+//                                     *-* *   XXX X     X
+//                                     *- *       XXX   X
+//                                    *- *X          XXX
+//                                    *- *X  X          XXX
+//                                   *- *X    X            XX
+//                                   *- *XX    X             X
+//                                  *  *X* X    X             X
+//                                  *  *X * X    X             X
+//                                 *  * X**  X   XXXX          X
+//                                 *  * X**  XX     X          X
+//                                *  ** X** X     XX          X
+//                                *  **  X*  XXX   X         X
+//                               *  **    XX   XXXX       XXX
+//                              *  * *      XXXX      X     X
+//                             *   * *          X     X     X
+//               =======*******   * *           X     X      XXXXXXXX\
+//                      *         * *      /XXXXX      XXXXXXXX\      )
+//                 =====**********  *     X                     )  \  )
+//                   ====*         *     X               \  \   )XXXXX
+//              =========**********       XXXXXXXXXXXXXXXXXXXXXX
+//          
+//                                 CURSE YOU RED BARON!!
+//
+//                  OK, we give up trying to hide these cells from you.
+//                      Go ahead and rubber-neck all you want...
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_49--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Delete an Entire Row</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Delete an entire row from the `users` table
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> In the next cell, write and execute a command to delete Cristina's row from the `users` table.
+- #### Remember, to delete an entire row, leave the column list blank
+<br>
+
+<details>
+<summary><i><span style="color:blue">Want a bit more of a hint? Click here.</span></i></summary>
+> This step should be pretty easy - of course, it's not like the previous steps were really rocket-science.
+> Hey, this is CQL, so it's supposed to be easy.
+>
+> Anyway, to delete the entire row, you don't list any columns names in the column list right after the `DELETE` keyword.
+> Yep, just leave it blank.
+> So the command for this step looks like the previous step's command, except:
+>- There is no column list
+>- You will need to change the `userid` to Cristina's `userid`
+</details>
+
+<details>
+<summary><i><span style="color:blue">Want the command? Click here.</span></i></summary>
+> Remember to copy and paste Cristina's `userid` where it says `<Cristina's-userid-value-goes-here>`.
+
+```
+DELETE FROM killrvideo.users WHERE userid = <Cristina's-userid-value-goes-here>;
+```
+</details>
+
+--------------------CELL_CQL_50--------------------
+// Write the DELETE command here to delete Cristina's row from the users table
+// Copy and paste Cristina's userid value as indicated
+// Execute the delete by SHIFT+ENTER or click the Run button in the top-right corner of this cell
+
+--------------------CELL_MARKDOWN_51--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Verify the `DELETE` worked as expected.
+- #### Execute the following cell
+- #### Again, the cell only _looks_ empty because we have hidden the code editor - just click the _CL.ONE_ button
+- #### Verify the Cristina's row is gone
+--------------------CELL_CQL_52--------------------
+//                                          #####
+//                            #######      #**#!!###
+//                           #**#!!!!##   #****#!!!!#
+//                          #****###!!!#  #*****#!!!!#
+//                          #*******#!!!# #******#!!!!#
+//                          #*********#!###!*!*!*#!!!!!#        --
+//                          #!*!*!*!*!*!#!##########!!!!#      /_
+//                          ###########!##!!!!!!!!!!#!!!#     //__
+//                       ###!!!!!!!!!!!#!!!!!!!!!!!!!#!!!####///  \
+//             \       ##!#!!!!!!!!!!!#!!!!!!!!!!!!!!!#!!!!!!!#
+//             _\    ##!!#!!!!!!!!!!!#!!!!!!!!!!!######!!!!!!!*#
+//              \\  ##!!#!!!!!!!!!!!!#!!!!#######     #!!!!!!***#
+//            ___\\#!!!###################*****       #...!!*****#
+//           /   \#!!!.#       ***** #     ***        #....*******#
+//               #*....#        ***   #              #.......*****#
+//              #**.....##          *****          ##........!!****#
+//              #!........##       *******#########......#...!!!!!*#
+//             #!...........#######.*****...............#.#..!!!!**#
+//            #*.....##.............#..#...............#...#.!!****#
+//            #*....#.#............#....#............##......!*****#
+//            #*.......##.......###......###........#.......!!!****#
+//            #*.........#######......!!....########.......!!!!!***#
+//             #!!!.................!!!!!!!!.............!!!*******#
+//              #!!!!............!!!!!!!!!!!!!!!!!!!!!!!!!!!******#
+//               #*******!!!!!!!!!!!!!!!!!!!!!!!!!!!!***!!!!*****#
+//                #******!!!!!!!!!!!!!!!!!!!!!!!!!********!!****#
+//                 ##*****!!!!!!!!!!!!!!!!!!!!!#*************###
+//                   ##****!!!!!!!!!!!!!!!!!!!!!###******####
+//                     ####!!!!!!!!!!!!!!!!!!!!!!!!######!#
+//                         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*#
+//                         #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!***##
+//                        #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!******#
+//                       #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*******#
+//                      #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*****#
+//                     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!**#
+//                    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!##
+//                   #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!*##
+//                  #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!***#
+//                  #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!####!!!!!!****##
+//                 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!###****##!!!!******##
+//                 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!##**!!*****#!!!********#
+//                 #!!!!!!!!#!!!!!!!!!!!#!!!!!!!#***!!!!***!!!!**********#
+//                #!!!!!!!!!!#!!!!!!!!!#!!!!!!!#****!!!!!*!!!!!!!!!!*****#
+//                #!!!!!!!!!!!#!!!!!!!#!!!!!!!#*!!***!!!!!!!!!!!!!!!!!***#
+//                #!!!!!!!!!!!!#!!!!!!#!!!!!!#*!!!!!*!!!!!!!!!!!!!!!*****#
+//                #!!!!!!!!!!!!#!!!!!!#!!!!!#***!!!!!!!!!!!!!!!!!********#
+//               #!!!!!!!!!!!!!#!!!!!!#!!!!!#****!!!!!!!!!!!!!!**********#
+//               #!!!!!!!!!!!!!#!!!!!!#!!!!!#*****!!!!!!!!!!!!!!*********#
+//               #!!!!!!!!!!!!!#!!!!!!#!!!!!#***!!!!!!!!!!!!!!!!!********##
+//              ##!!!!!!!!!!!!!#!!!!!!#!!!!!#*!!!!!!!!!!!!!!!!!!!!!*****#!*##
+//             #!#!!!!!!!!######!!!!!!#!!!!!#**!!!!!!!!!!#########!!!!*#!!**##
+//            #!#!#!!!!!!#!!!!!!!!!!!!#!!!!!#***!!!!!####******!!!#######!!**#
+//           #!#!!##!!!!#!!!!!!!!!!!############*!!!#********!!!!!!!!!!!!!!!**#
+//           #!#!!#!#!!#!!!#!!!!!!!#!!!!!!!!!!!!!!!#***********!!!!!!!!!!!!!!!#
+//           #!#!!!#!#!#!!#!!!!!!!#!!!!#!!!!#!!!!!#**********!!!!!!!!!!!!!!!**#
+//           #!!#!!!#!##!!#!!!!!!#!!!!#!!!!#!!!!!!#************!!!!!!!!!!****#
+//            ######### ##########!!!!#!!!!#!!!!!!#**********!!!!!!!!!!!!***#
+//                                #################************!!!!!!!!!!**#
+//                                                #**********!!!!!#########
+//                                                 ###############
+//
+// We have introduced Zen into our lives and are no longer exasperated at you looking at these hidden cells...
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_53--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Truncate the Table</span></center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Learn the syntax of the CQL `TRUNCATE` command
+- #### Delete all data from the `users` table
+
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> Execute the following cell
+- #### We want to delete all rows in the table
+- #### We don't want to delete the table itself
+- #### This command is so simple, we've written it for you in the next cell
+
+---
+
+#### **Note:**
+> #### The next cell actually contains two CQL commands. The first command truncates the table as explained. The second command retrieves all the rows in the table.
+> #### When you execute the cell, CQL will perform the `TRUNCATE` command followed by the `SELECT`, and print the results of the `SELECT` command.
+
+---
+
+--------------------CELL_CQL_54--------------------
+// To execute both commands in this cell, click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell
+// Delete the entire contents of the super_cool_table
+TRUNCATE killrvideo.users;
+
+// Now inspect the table again
+SELECT * FROM killrvideo.users;
+--------------------CELL_MARKDOWN_55--------------------
+#### Look! No rows!
+- #### No rows from the query
+- #### Does the table still exist?
+- #### How could you tell?
+
+<br>
+#### <span style="color:teal"><b>Step 2:</b></span> Determine if the `users` table still exists in the `killrvideo` keyspace.
+#### This final step is a bit more challenging because we aren't going to tell you what commands to use.
+#### It's up to you and your superior knowledge to determine if, in the previous step, you deleted only the rows from the table, or the entire table.
+
+<br>
+#### Write some CQL in the next cell to demonstrate that the `users` table still exists.
+
+<details>
+<summary><i><span style="color:blue">Maybe you're a little stuck? Click here.</span></i></summary>
+> Actually, you have several options on how you want to solve this.
+> In the first steps of this notebook, we used the `DESCRIBE` command to see the keyspace schema.
+> We also discussed using the schema explorer in the top-right corner of the notebook.
+> While either of these approaches work, maybe they are not the cowboy-way!
+> Could you have guessed that you could use the `DESCRIBE` command on a single table?
+> Give it a shot - we are betting you can figure it out.
+><details>
+<summary><i><span style="color:blue">Are you telling us to cancel our trip to Vegas and give you the command? Click here.</span></i></summary>
+```
+DESCRIBE TABLE killrvideo.users;
+```
+</details>
+--------------------CELL_CQL_56--------------------
+// Go ahead - try your hand at CQL to demonstrate that the users table still exists...
+
+--------------------CELL_MARKDOWN_57--------------------
+#### Ah, so the table is empty, but it _does_ still exist.
+- #### How do we delete the table?
+
+<br>
+#### <span style="color:teal"><b>Step 3:</b></span> Inspect the commands in the next two cells, then execute them in order.
+<br>
+---
+
+#### **Note:**
+> #### You may be wondering why we didn't put both commands in a single cell. The commands need to be in separate cells to allow the effects of the first cell to take effect fully before we can execute the second cell.
+
+---
+
+--------------------CELL_CQL_58--------------------
+// Deleting a table is also like SQL:
+// Click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell
+DROP TABLE killrvideo.users;
+--------------------CELL_CQL_59--------------------
+// Look for the deleted table
+// Click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell
+DESCRIBE TABLE killrvideo.users;
+--------------------CELL_MARKDOWN_60--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Congratulations!!!!</span></center>
+
+#### If you have made it to this point of this notebook successfully, you are armed with the essential CQL skills!
+<p><h4>
+<li>Of course, there is still a lot that we haven't covered</li>
+<li>You can learn more at <a href="https://academy.datastax.com" target="_blank">DataStax Academy</a> - did we mention it's free!</li>
+<li>But you have the skills that will handle 80% of your CQL needs</li></h4>
+</p>
+
+#### Celebrate by doing a happy dance!
+
+<details>
+<summary><i><span style="color:blue">Don't want to do a dance? Click here, and we will do one for you.</span></i></summary>
+<div class="solution-wrapper">
+
+<div class="solution-content">
+<center><div class="align-center"><img alt="Dance off!" src="https://media.giphy.com/media/xTiTnkgr98vls9Kiys/giphy.gif"></div></center>
+</div>
+</div>
+</details>
+
+--------------------CELL_MARKDOWN_61--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Bonus Challenge: Use the _CQL Console_ in Astra</span></center>
+### <center>If you got done early and want something to do while you wait for others, here's a bonus challenge</center>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Use the CQL Console tab in Astra to execute _cqlsh_ directly
+
+
+<br>
+#### <span style="color:teal">_cqlsh_ is a CQL command shell you can use outside of Studio to issue simple commands without the need of a UI.</span>
+
+#### <span style="color:teal"><b>Step 1:</b></span> At this point you should already be logged into your Astra database. Navigate to the detail page of the _killrvideocluster_ we created earlier and click the **CQL Console** button in the control bar at the top right of the page.
+<center>![GoTo CQL Console](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console.png)</center>
+
+--------------------CELL_MARKDOWN_62--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> Now, login using the same user and password you used when creating the killrvideocluster database. If you've followed the instructions given to this point that should be _KVUser_ and _KVPassword_.
+<center>![View CQL Console](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-view-cql-console.png)</center>
+
+#### It should look something like this.
+<center>![Login CQL Conosle](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-login-cql-console.png)</center>
+
+--------------------CELL_MARKDOWN_63--------------------
+#### <span style="color:teal"><b>Step 3:</b></span> Once you've logged in _Describe_ the current keyspaces.
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-desc-keyspace.png)</center>
+--------------------CELL_MARKDOWN_64--------------------
+#### <span style="color:teal"><b>Step 4:</b></span> Switch to the _killrvideo_ keyspace with the **use** command.
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-use-killrvideo.png)</center>
+--------------------CELL_MARKDOWN_65--------------------
+#### <span style="color:teal"><b>Step 5:</b></span> Now describe all of the tables within the _killrvideo_ keyspace.
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-describe-tables.png)</center>
+--------------------CELL_MARKDOWN_66--------------------
+#### <span style="color:teal"><b>Step 6:</b></span> Now try to select some data from the user_credentials table. Right now, if you followed all of the directions in the notebook there shouldn't be any data. Let's go ahead and insert a row of data.
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-select-from-tables.png)</center>
+--------------------CELL_MARKDOWN_67--------------------
+#### <span style="color:teal"><b>Step 7:</b></span> Ok, let's insert some data. Use the data provided below to insert a row into the _user_credentials_ table using the _CQL Console_.
+
+```
+email,password,userid
+jc@datastax.com,J3ffL0v3$C@ss@ndr@,11111111-1111-1111-1111-111111111111
+```
+
+<details>
+<summary><i><span style="color:blue">Need some help? Click here.</span></i></summary>
+
+```
+INSERT INTO user_credentials (email,password,userid) VALUES ('jc@datastax.com','J3ffL0v3$C@ss@ndr@',11111111-1111-1111-1111-111111111111);
+```
+</details>
+--------------------CELL_MARKDOWN_68--------------------
+#### Once you're done it should look something like this.
+
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-insert-into-cred.png)</center>
+--------------------CELL_MARKDOWN_69--------------------
+#### <span style="color:teal"><b>Step 8:</b></span> Finally, let's clean things up and delete the data we just inserted. In this case since we are looking to delete exactly the data we just inserted we'll need to use the partition key (**email**) in our _WHERE_ clause. See if you can create the command and execute it within the Astra _CQL Console_.
+
+
+<details>
+<summary><i><span style="color:blue">Need some help? Click here.</span></i></summary>
+
+```
+DELETE FROM user_credentials where email = 'jc@datastax.com';
+```
+</details>
+--------------------CELL_MARKDOWN_70--------------------
+#### Once you're done it should look something like this.
+
+<center>![Describe Keyspaces](https://raw.githubusercontent.com/DataStax-Academy/cassandra-workshop-series/master/week1%20-%20Getting%20Started%20with%20Cassandra/images/astra-use-cql-console-delete-from-cred.png)</center>
+--------------------CELL_MARKDOWN_71--------------------
+![line](https://s3.amazonaws.com/datastaxtraining/CaaS/line.png "line" )
+# <center><span style="color:teal">Bonus Challenge: Alter a table</span></center>
+### <center>If you got done early and want something to do while you wait for others, here's another bonus challenge</center>
+<br>
+
+### <span style="color:teal">In this section, you will do the following things:</span>
+- #### Alter a table
+
+
+<br>
+#### You may recall that the `user_credentials` table looks lik this.
+```
+CREATE TABLE IF NOT EXISTS user_credentials (
+    email     text,
+    password  text,
+    userid    uuid,
+    PRIMARY KEY (email)
+);
+```
+#### In this Bonus Challenge, let's imagine that your manager wants to add "hint" functionality to KillrVideo and wants you to add a `hint` column to this table.
+<br>
+#### <span style="color:teal"><b>Step 1:</b></span> In cqlsh, enter the `ALTER TABLE` command. Here's a hint as to what it looks like.
+<center>![AlterTable](https://s3.amazonaws.com/datastaxtraining/CaaS/AlterTable.png)</center>
+#### No, your glasses aren't smudged. We blurred some vital parts of the command, otherwise there would be no challenge to the challenge. :)
+#### If that isn't enough of a hint, here's a command format spec. Yeah, we know you don't like to read these things, but notice that with an `ALTER TABLE` command you can add, drop, or rename columns.
+```
+ALTER TABLE [keyspace_name.]table_name 
+  [ ADD ( column_definition | column_definition_list ) ]
+  [ DROP ( column | column_list | COMPACT STORAGE ) ]
+  [ RENAME column_name TO column_name ];
+```
+
+#### Go back to _CQL Console_ in Astra and alter the `user_credentials` table to add a `TEXT` `hint` column.
+<details>
+<summary><i><span style="color:blue">Click here for the solution.</span></i></summary>
+
+```
+ALTER TABLE killrvideo.user_credentials ADD (hint TEXT);
+```
+</details>
+
+
+--------------------CELL_MARKDOWN_72--------------------
+#### <span style="color:teal"><b>Step 2:</b></span> In the next cell, describe the `user_credentials` table to see the results of the `ALTER` command.
+
+
+--------------------CELL_CQL_73--------------------
+// Insepct the user_credentials table by executing this cell.
+// Click here and then SHIFT+ENTER or click the Run button in the top-right corner of this cell
+DESCRIBE TABLE killrvideo.user_credentials;
+--------------------CELL_MARKDOWN_74--------------------
+#### **Boom**, that's it. At this point you should have the tools needed to start playing around with your Astra database in both DataStax Studio and/or the CQL Console. Nice job and thanks for doing the bonus material.
