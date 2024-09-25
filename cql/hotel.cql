@@ -2,6 +2,8 @@
 CREATE KEYSPACE hotel
     WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : 3};
 
+use hotel;
+
 CREATE TYPE hotel.address (
     street text,
     city text,
@@ -50,3 +52,9 @@ CREATE TABLE hotel.amenities_by_room (
     description text,
     PRIMARY KEY ((hotel_id, room_number), amenity_name)
 ) WITH comment = 'Q5. Find amenities for a room';
+
+
+
+load csv file to table available_rooms_by_hotel_date 
+
+COPY available_rooms_by_hotel_date (hotel_id, date, room_number, is_available) FROM '/Users/nag/play-with-sql-nosql-batch2/cql/available_rooms.csv' WITH HEADER = true;

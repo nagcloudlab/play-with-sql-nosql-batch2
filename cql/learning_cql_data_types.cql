@@ -31,6 +31,7 @@ ALTER TABLE user ADD emails set<text>;
 
 # Add an email address and check that it was added successfully
 UPDATE user SET emails = { 'mary@example.com' } WHERE first_name = 'Mary';
+
 SELECT emails FROM user WHERE first_name = 'Mary';
 
 # Add another email address using concatenation
@@ -53,7 +54,7 @@ UPDATE user SET phone_numbers = phone_numbers + [ '480-111-1111' ] WHERE first_n
 SELECT phone_numbers FROM user WHERE first_name = 'Mary';
 
 # Replace an individual item in the list referenced by its index
-UPDATE user SET phone_numbers[1] = '480-111-1111' WHERE first_name = 'Mary';
+UPDATE user SET phone_numbers[0] = '480-111-1111' WHERE first_name = 'Mary';
 
 # Use the subtraction operator to remove a list item matching a specified value
 UPDATE user SET phone_numbers = phone_numbers - [ '480-111-1111' ] WHERE first_name = 'Mary';
@@ -114,6 +115,9 @@ DESCRIBE KEYSPACE;
 CREATE INDEX ON user ( addresses );
 CREATE INDEX ON user ( emails );
 CREATE INDEX ON user ( phone_numbers );
+
+list all indexes on a table
+DESCRIBE TABLE user;
 
 # Drop indexes we no longer want maintained
 DROP INDEX user_last_name_idx;

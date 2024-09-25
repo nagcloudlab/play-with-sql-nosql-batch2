@@ -14,7 +14,7 @@ SELECT * FROM available_rooms_by_hotel_date;
 SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123';
 
 # Search for hotel rooms for a specific hotel and date range:
-SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and date>'2016-01-05' and date<'2016-01-12';
+SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and date<'2016-01-12' and date>'2016-01-05';
 
 # Why doesn't this query work?
 SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and room_number=101;
@@ -25,9 +25,6 @@ DESCRIBE TABLE available_rooms_by_hotel_date;
 # We can force it to work, but why is this not a good practice?
 SELECT * FROM available_rooms_by_hotel_date WHERE date='2016-01-25' ALLOW FILTERING;
 
-
-# SELECT by is_available
-SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' AND date='2016-01-05';
 
 #
 # IN clause example
@@ -45,3 +42,5 @@ SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' AND date IN (
 SELECT * FROM available_rooms_by_hotel_date
   WHERE hotel_id='AZ123' AND date>'2016-01-05' AND date<'2016-01-12'
   ORDER BY date DESC;
+
+
