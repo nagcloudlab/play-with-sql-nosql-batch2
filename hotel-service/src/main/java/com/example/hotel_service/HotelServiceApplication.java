@@ -133,7 +133,7 @@ class HotelService {
 
 @RestController
 @RequestMapping("/api/hotels")
-@CrossOrigin(origins = "*")	
+@CrossOrigin(origins = "*")
 class HotelController {
 
 	@Autowired

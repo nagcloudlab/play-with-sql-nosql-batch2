@@ -1,0 +1,17 @@
+curl -X POST http://localhost:8080/api/hotels \
+-H "Content-Type: application/json" \
+-d '{
+    "id": "hotel_123",
+    "name": "The Grand Hotel",
+    "phone": "123-456-7890",
+    "address": {
+        "street": "123 Main St",
+        "city": "New York",
+        "state_or_province": "NY",
+        "postal_code": "10001",
+        "country": "USA"
+    },
+    "pois": ["Central Park", "Times Square"]
+}' | jq
+
+
