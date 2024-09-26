@@ -1,0 +1,8 @@
+spring:
+  cassandra:
+    contact-points: localhost
+    local-datacenter: datacenter1
+    keyspace-name: hotel
+    schema-action: create-if-not-exists
+    request:
+      consistency: ONE

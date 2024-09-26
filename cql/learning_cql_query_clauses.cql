@@ -16,6 +16,9 @@ SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123';
 # Search for hotel rooms for a specific hotel and date range:
 SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and date<'2016-01-12' and date>'2016-01-05';
 
+# Search for hotel rooms for a specific hotel and date range and room number
+SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and date='2016-01-12' and room_number=101;
+
 # Why doesn't this query work?
 SELECT * FROM available_rooms_by_hotel_date WHERE hotel_id='AZ123' and room_number=101;
 
