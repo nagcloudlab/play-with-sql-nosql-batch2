@@ -6,7 +6,7 @@ networks:
 
 services:
   cassandra-1:
-    image: "cassandra:latest" # cassandra:4.1.3
+    image: "cassandra:latest"
     container_name: "cassandra-1"
     ports:
       - 7000:7000
@@ -14,12 +14,16 @@ services:
     networks:
       - cassandra-net
     environment:
-      - CASSANDRA_START_RPC=true # default
-      - CASSANDRA_RPC_ADDRESS=0.0.0.0 # default
-      - CASSANDRA_LISTEN_ADDRESS=auto # default, use IP addr of container # = CASSANDRA_BROADCAST_ADDRESS
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
       - CASSANDRA_CLUSTER_NAME=my-cluster
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-      - CASSANDRA_DC=my-datacenter-1
+      - CASSANDRA_DC=DC1
+      - CASSANDRA_RACK=RACK1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
     volumes:
       - cassandra-node-1:/var/lib/cassandra:rw
     restart: on-failure
@@ -31,20 +35,24 @@ services:
       retries: 3
 
   cassandra-2:
-    image: "cassandra:latest" # cassandra:4.1.3
+    image: "cassandra:latest"
     container_name: "cassandra-2"
     ports:
       - 9043:9042
     networks:
       - cassandra-net
     environment:
-      - CASSANDRA_START_RPC=true # default
-      - CASSANDRA_RPC_ADDRESS=0.0.0.0 # default
-      - CASSANDRA_LISTEN_ADDRESS=auto # default, use IP addr of container # = CASSANDRA_BROADCAST_ADDRESS
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
       - CASSANDRA_CLUSTER_NAME=my-cluster
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-      - CASSANDRA_DC=my-datacenter-1
+      - CASSANDRA_DC=DC1
+      - CASSANDRA_RACK=RACK2
       - CASSANDRA_SEEDS=cassandra-1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
     depends_on:
       cassandra-1:
         condition: service_healthy
@@ -59,25 +67,125 @@ services:
       retries: 3
 
   cassandra-3:
-    image: "cassandra:latest" # cassandra:4.1.3
+    image: "cassandra:latest"
     container_name: "cassandra-3"
     ports:
       - 9044:9042
     networks:
       - cassandra-net
     environment:
-      - CASSANDRA_START_RPC=true # default
-      - CASSANDRA_RPC_ADDRESS=0.0.0.0 # default
-      - CASSANDRA_LISTEN_ADDRESS=auto # default, use IP addr of container # = CASSANDRA_BROADCAST_ADDRESS
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
       - CASSANDRA_CLUSTER_NAME=my-cluster
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-      - CASSANDRA_DC=my-datacenter-1
+      - CASSANDRA_DC=DC2
+      - CASSANDRA_RACK=RACK1
       - CASSANDRA_SEEDS=cassandra-1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
     depends_on:
-      cassandra-2:
+      cassandra-1:
         condition: service_healthy
     volumes:
       - cassandra-node-3:/var/lib/cassandra:rw
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status"]
+      interval: 2m
+      start_period: 2m
+      timeout: 10s
+      retries: 3
+
+  cassandra-4:
+    image: "cassandra:latest"
+    container_name: "cassandra-4"
+    ports:
+      - 9045:9042
+    networks:
+      - cassandra-net
+    environment:
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
+      - CASSANDRA_CLUSTER_NAME=my-cluster
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_DC=DC2
+      - CASSANDRA_RACK=RACK2
+      - CASSANDRA_SEEDS=cassandra-1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
+    depends_on:
+      cassandra-1:
+        condition: service_healthy
+    volumes:
+      - cassandra-node-4:/var/lib/cassandra:rw
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status"]
+      interval: 2m
+      start_period: 2m
+      timeout: 10s
+      retries: 3
+
+  cassandra-5:
+    image: "cassandra:latest"
+    container_name: "cassandra-5"
+    ports:
+      - 9046:9042
+    networks:
+      - cassandra-net
+    environment:
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
+      - CASSANDRA_CLUSTER_NAME=my-cluster
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_DC=DC2
+      - CASSANDRA_RACK=RACK2
+      - CASSANDRA_SEEDS=cassandra-1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
+    depends_on:
+      cassandra-1:
+        condition: service_healthy
+    volumes:
+      - cassandra-node-5:/var/lib/cassandra:rw
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "nodetool status"]
+      interval: 2m
+      start_period: 2m
+      timeout: 10s
+      retries: 3
+
+  cassandra-6:
+    image: "cassandra:latest"
+    container_name: "cassandra-6"
+    ports:
+      - 9047:9042
+    networks:
+      - cassandra-net
+    environment:
+      - CASSANDRA_START_RPC=true
+      - CASSANDRA_RPC_ADDRESS=0.0.0.0
+      - CASSANDRA_LISTEN_ADDRESS=auto
+      - CASSANDRA_CLUSTER_NAME=my-cluster
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_DC=DC2
+      - CASSANDRA_RACK=RACK3
+      - CASSANDRA_SEEDS=cassandra-1
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+      - JVM_OPTS=-Dcassandra.schema_pull_request_timeout_in_ms=60000
+    depends_on:
+      cassandra-1:
+        condition: service_healthy
+    volumes:
+      - cassandra-node-6:/var/lib/cassandra:rw
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "nodetool status"]
@@ -90,3 +198,6 @@ volumes:
   cassandra-node-1:
   cassandra-node-2:
   cassandra-node-3:
+  cassandra-node-4:
+  cassandra-node-5:
+  cassandra-node-6:
