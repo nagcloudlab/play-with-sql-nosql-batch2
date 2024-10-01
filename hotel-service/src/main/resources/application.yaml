@@ -6,3 +6,6 @@ spring:
     schema-action: create-if-not-exists
     request:
       consistency: ONE
+
+server:
+  port: 8181

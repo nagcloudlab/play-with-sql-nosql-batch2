@@ -1,3 +1,8 @@
+
+
+//
+
+
 curl -X POST http://localhost:8080/api/hotels \
 -H "Content-Type: application/json" \
 -d '{
@@ -14,4 +19,7 @@ curl -X POST http://localhost:8080/api/hotels \
     "pois": ["Central Park", "Times Square"]
 }' | jq
 
+
+
+curl -X GET http://localhost:8181/api/hotels/hotel_639D5CFD-1088-4E7B-A205-7B8041D16052 
 
