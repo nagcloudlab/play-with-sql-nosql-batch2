@@ -207,12 +207,6 @@ bin/connect-distributed.sh config/connect-distributed.properties
 
 ---
 
-list the available connectors
-
-```bash
-curl http://localhost:8083/connectors
-```
-
 list connctor plugins
 
 ```bash
@@ -243,6 +237,12 @@ curl -X POST -H "Content-Type: application/json" --data '{
   }
 }' http://localhost:8083/connectors
 
+```
+
+list the available connectors
+
+```bash
+curl http://localhost:8083/connectors
 ```
 
 ---
