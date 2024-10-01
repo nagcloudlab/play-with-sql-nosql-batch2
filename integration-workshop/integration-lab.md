@@ -219,40 +219,7 @@ list connctor plugins
 curl http://localhost:8083/connector-plugins
 ```
 
-using confluentinc-kafka-connect-cassandra-1.2.1 sink connector
-
 deploy the connector
-
-```bash
-curl -X POST -H "Content-Type: application/json" --data @cassandra-sink-config.json http://localhost:8083/connectors
-```
-
----
-
-cassandra-sink-config.json
-
-```json
-{
-  "name": "cassandra-sink-connector",
-  "config": {
-    "connector.class": "com.datastax.oss.kafka.sink.CassandraSinkConnector",
-    "topics": "user_activities",
-    "contactPoints": "localhost",
-    "loadBalancing.localDc": "datacenter1",
-    "topic.user_activities.my_keyspace.user_activities.mapping": "user_id=value.user_id, activity_time=value.activity_time, activity=value.activity",
-    "max.retries": "5",
-    "retry.interval.ms": "5000",
-    "tasks.max": "1",
-    "consistencyLevel": "LOCAL_QUORUM",
-    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "key.converter.schemas.enable": "false",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter.schemas.enable": "false"
-  }
-}
-```
-
-combine curl & json
 
 ```bash
 
