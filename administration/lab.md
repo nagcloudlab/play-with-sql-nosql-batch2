@@ -27,7 +27,7 @@ scrape_configs:
       - targets: ["localhost:7071", "localhost:7073"]
 ```
 
----
+./prometheus --config.file=/path/to//prometheus.yml --web.listen-address="localhost:9090"
 
 step-5: deploy grafana with cassandra dashboard
 
@@ -60,3 +60,5 @@ start cassandra-stress
 ```bash
 python write_read.py
 ```
+
+---
