@@ -1,4 +1,4 @@
-JMX Prometheus Exporter
+JMX Prometheus Exporter ( e.g java-agent )
 
 step-1:
 download jmx_prometheus_javaagent jar
@@ -47,20 +47,20 @@ step-5: download grafana and start grafana
 ```
 
 - configure prometheus datasource
-- import cassandra dashboard ( 12086)
+- import cassandra dashboard ( 12086 )
 
 ---
 
 create keyspace
 
 ```cql
-create keyspace test_keyspace with replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 2};
+create keyspace my_keyspace with replication = {'class': 'NetworkTopologyStrategy', 'replication_factor': 3};
 ```
 
 create table
 
 ```cql
-create table test_keyspace.load_test (
+create table my_keyspace.my_table (
     id uuid primary key,
     name text,
     value text,
