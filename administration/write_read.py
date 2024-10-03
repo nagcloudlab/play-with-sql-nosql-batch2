@@ -17,12 +17,12 @@ insert_stmt = session.prepare("""
     INSERT INTO my_table (id, name, value, created_at)
     VALUES (?, ?, ?, ?)
 """)
-insert_stmt.consistency_level = ConsistencyLevel.TWO  # Example consistency level for insert
+insert_stmt.consistency_level = ConsistencyLevel.ONE  # Example consistency level for insert
 
 select_stmt = session.prepare("""
     SELECT * FROM my_table WHERE id = ?
 """)
-select_stmt.consistency_level = ConsistencyLevel.ONE  # Example consistency level for read
+select_stmt.consistency_level = ConsistencyLevel.TWO  # Example consistency level for read
 
 # Generate a batch of unique keys
 def generate_keys(n):
