@@ -246,21 +246,3 @@ curl http://localhost:8083/connectors
 ```
 
 ---
-
-create users table with cdc enabled
-
-```sql
-CREATE TABLE my_keyspace.users (
-    user_id text PRIMARY KEY,
-    first_name text,
-    last_name text
-) WITH cdc = {'enabled': 'true'};
-```
-
----
-
-add node4 to the cluster
-
-```bash
-cp -r node1 node4
-```

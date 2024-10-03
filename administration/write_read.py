@@ -44,7 +44,7 @@ def simulate_reads(keys):
     print(f"Read {count} rows.")
 
 # Configuration for simulation
-num_operations = 100000  # Number of insert-read operations to perform
+num_operations = 1000000  # Number of insert-read operations to perform
 
 # Generate keys
 primary_keys = generate_keys(num_operations)
